@@ -12,3 +12,8 @@ This repository is a comprehensive guide for anyone interested in automation, sy
 ✅ Networking: IP configuration, scanning, and automation
 ✅ Security & OSINT: Log analysis, file forensics, and data extraction
 ✅ Automation & Task Scheduling for both Windows and Linux
+
+#CyberSecurity #InfoSec #EthicalHacking #PenetrationTesting #OSINT #ThreatIntelligence #SecurityTools #BugBounty #RedTeam #BlueTeam  
+#Pentesting #ExploitDevelopment #PrivilegeEscalation #MalwareAnalysis #ReverseEngineering #SocialEngineering #NetworkHacking #WirelessHacking #WebExploitation #Metasploit  
+#SIEM #ThreatHunting #IncidentResponse #SOC #Forensics #LogAnalysis #FirewallSecurity #IDS #VulnerabilityManagement #SecurityAutomation  
+
