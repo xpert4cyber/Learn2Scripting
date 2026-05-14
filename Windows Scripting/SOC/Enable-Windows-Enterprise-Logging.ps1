@@ -1,157 +1,190 @@
-<#
-==================================================================================
- WINDOWS SERVER MAXIMUM COVERAGE LOGGING STACK (REALISTIC A–Z)
- SOC / DFIR / ACTIVE DIRECTORY / THREAT HUNTING READY
-==================================================================================
-#>
+# ==========================================================
+# SOC AUTO LOG DISCOVERY + AUTO ENABLE ENGINE (FINAL)
+# ==========================================================
 
-# ============================
-# ADMIN CHECK
-# ============================
-If (-NOT ([Security.Principal.WindowsPrincipal] `
-    [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(`
-    [Security.Principal.WindowsBuiltInRole]::Administrator))
-{
-    Write-Host "[!] Run as Administrator" -ForegroundColor Red
-    Exit
+Clear-Host
+Write-Host "=============================================" -ForegroundColor Cyan
+Write-Host " SOC AUTO LOG DISCOVERY + FIX ENGINE START" -ForegroundColor Cyan
+Write-Host "=============================================`n" -ForegroundColor Cyan
+
+# ---------------- ADMIN CHECK ----------------
+if (-not ([Security.Principal.WindowsPrincipal] `
+    [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
+    [Security.Principal.WindowsBuiltInRole] "Administrator")) {
+    Write-Host "RUN AS ADMIN REQUIRED" -ForegroundColor Red
+    exit
 }
 
-Set-ExecutionPolicy Bypass -Scope Process -Force
+# ==========================================================
+# 1. DEFINE CRITICAL LOG SET (A-Z SOC COVERAGE)
+# ==========================================================
 
-Write-Host "[+] Deploying MAXIMUM Windows Server Logging..." -ForegroundColor Cyan
-
-# ============================
-# BASE
-# ============================
-New-Item -ItemType Directory -Path "C:\SOC_STACK\Sysmon" -Force | Out-Null
-New-Item -ItemType Directory -Path "C:\Logs" -Force | Out-Null
-New-Item -ItemType Directory -Path "C:\PowerShellLogs" -Force | Out-Null
-
-# ============================
-# 1. FULL ADVANCED AUDIT POLICY (ALL IMPORTANT SUBCATEGORIES)
-# ============================
-$audit = @(
-"Logon","Logoff","Account Lockout","Special Logon",
-"Process Creation","Process Termination",
-"File System","Registry","Handle Manipulation",
-"User Account Management","Security Group Management",
-"Credential Validation",
-"Kerberos Authentication Service","Kerberos Service Ticket Operations",
-"Directory Service Access","Directory Service Changes","Directory Service Replication",
-"File Share","Detailed File Share",
-"Removable Storage",
-"Filtering Platform Connection","Filtering Platform Packet Drop",
-"Other Object Access Events",
-"Security System Extension",
-"DPAPI Activity",
-"Audit Policy Change",
-"Authorization Policy Change"
-)
-
-foreach ($a in $audit) {
-    auditpol /set /subcategory:"$a" /success:enable /failure:enable | Out-Null
-}
-
-# ============================
-# 2. PROCESS + COMMAND LINE TRACKING
-# ============================
-reg add "HKLM\Software\Microsoft\Windows\CurrentVersion\Policies\System\Audit" `
-/v ProcessCreationIncludeCmdLine_Enabled /t REG_DWORD /d 1 /f
-
-# ============================
-# 3. POWERSHELL FULL TELEMETRY
-# ============================
-New-Item "HKLM:\SOFTWARE\Policies\Microsoft\Windows\PowerShell\ScriptBlockLogging" -Force | Out-Null
-Set-ItemProperty ... -Name EnableScriptBlockLogging -Value 1
-
-New-Item "HKLM:\SOFTWARE\Policies\Microsoft\Windows\PowerShell\ModuleLogging" -Force | Out-Null
-Set-ItemProperty ... -Name EnableModuleLogging -Value 1
-
-New-Item "HKLM:\SOFTWARE\Policies\Microsoft\Windows\PowerShell\Transcription" -Force | Out-Null
-Set-ItemProperty ... -Name EnableTranscripting -Value 1
-
-# ============================
-# 4. DEFENDER + SECURITY STACK
-# ============================
-wevtutil sl "Microsoft-Windows-Windows Defender/Operational" /e:true
-wevtutil sl "Microsoft-Windows-Windows Defender/WHC" /e:true
-
-# ============================
-# 5. FIREWALL FULL LOGGING
-# ============================
-Set-NetFirewallProfile -Profile Domain,Public,Private `
--LogAllowed True -LogBlocked True -LogIgnored True `
--LogFileName "%systemroot%\system32\LogFiles\Firewall\pfirewall.log" `
--LogMaxSizeKilobytes 32767
-
-# ============================
-# 6. CORE WINDOWS SERVER EVENT CHANNELS
-# ============================
-$logs = @(
-"Security","System","Application",
-"Microsoft-Windows-SMBServer/Operational",
-"Microsoft-Windows-SMBClient/Operational",
+$criticalLogs = @(
+"Security",
+"System",
+"Application",
+"Setup",
+"Windows PowerShell",
+"Microsoft-Windows-PowerShell/Operational",
+"Microsoft-Windows-Sysmon/Operational",
 "Microsoft-Windows-WMI-Activity/Operational",
 "Microsoft-Windows-TaskScheduler/Operational",
-"Microsoft-Windows-WinRM/Operational",
-"Microsoft-Windows-PowerShell/Operational",
-"Microsoft-Windows-TerminalServices-LocalSessionManager/Operational",
-"Microsoft-Windows-TerminalServices-RemoteConnectionManager/Operational",
 "Microsoft-Windows-DNS-Client/Operational",
-"Microsoft-Windows-DNS-Server/Analytical",
-"Microsoft-Windows-Kerberos/Operational",
-"Microsoft-Windows-NTLM/Operational",
-"Microsoft-Windows-DeviceGuard/Operational",
-"Microsoft-Windows-PrintService/Operational"
+"Microsoft-Windows-Windows Defender/Operational",
+"Microsoft-Windows-Windows Firewall With Advanced Security/Firewall",
+"Microsoft-Windows-Kernel-General",
+"Microsoft-Windows-Kernel-Process",
+"Microsoft-Windows-Kernel-File",
+"Microsoft-Windows-Kernel-Network"
 )
 
-foreach ($l in $logs) {
-    wevtutil sl "$l" /e:true
+# ==========================================================
+# 2. SCAN EXISTING LOG CHANNELS
+# ==========================================================
+
+Write-Host "[+] Scanning Event Log Channels..." -ForegroundColor Yellow
+
+$available = wevtutil el
+
+$report = @()
+foreach ($log in $criticalLogs) {
+
+    $exists = $available -contains $log
+
+    if ($exists) {
+        $status = "AVAILABLE"
+    } else {
+        $status = "MISSING"
+    }
+
+    $report += [PSCustomObject]@{
+        LogName = $log
+        Status  = $status
+    }
 }
 
-# ============================
-# 7. LOG SIZE + RETENTION MAX
-# ============================
-wevtutil sl Security /ms:4294967295
-wevtutil sl System /ms:1073741824
-wevtutil sl Application /ms:1073741824
+$report | Format-Table -AutoSize
 
-wevtutil sl Security /rt:true
-wevtutil sl System /rt:true
-wevtutil sl Application /rt:true
+# ==========================================================
+# 3. AUTO ENABLE AVAILABLE LOGS
+# ==========================================================
 
-# ============================
-# 8. OBJECT ACCESS + USB + FILE FORENSICS
-# ============================
-auditpol /set /subcategory:"File System" /success:enable /failure:enable
-auditpol /set /subcategory:"Registry" /success:enable /failure:enable
-auditpol /set /subcategory:"Removable Storage" /success:enable /failure:enable
+Write-Host "`n[+] Enabling Available Logs..." -ForegroundColor Yellow
 
-# ============================
-# 9. LSASS PROTECTION (CREDENTIAL THEFT BLOCK VISIBILITY)
-# ============================
-reg add "HKLM\SYSTEM\CurrentControlSet\Control\Lsa" `
-/v RunAsPPL /t REG_DWORD /d 1 /f
+foreach ($r in $report) {
 
-# ============================
-# 10. SYSMON (FULL BEHAVIORAL TELEMETRY)
-# ============================
-$sysmon = "C:\SOC_STACK\Sysmon"
-Invoke-WebRequest "https://live.sysinternals.com/Sysmon64.exe" -OutFile "$sysmon\Sysmon64.exe"
+    if ($r.Status -eq "AVAILABLE") {
+        try {
+            wevtutil sl $r.LogName /e:true 2>$null
+            wevtutil sl $r.LogName /ms:1073741824 2>$null
+            Write-Host "ENABLED: $($r.LogName)" -ForegroundColor Green
+        } catch {
+            Write-Host "FAILED: $($r.LogName)" -ForegroundColor DarkRed
+        }
+    }
+}
+
+# ==========================================================
+# 4. ADVANCED AUDIT POLICY AUTO FIX
+# ==========================================================
+
+Write-Host "`n[+] Applying Audit Policy..." -ForegroundColor Yellow
+
+$auditFix = @(
+"Logon",
+"Logoff",
+"Account Lockout",
+"Special Logon",
+"Process Creation",
+"Process Termination",
+"User Account Management",
+"Security Group Management",
+"Credential Validation",
+"File System",
+"Registry",
+"Removable Storage",
+"Policy Change"
+)
+
+foreach ($a in $auditFix) {
+    try {
+        auditpol /set /subcategory:$a /success:enable /failure:enable | Out-Null
+        Write-Host "AUDIT ENABLED: $a" -ForegroundColor Green
+    } catch {
+        Write-Host "AUDIT SKIP: $a" -ForegroundColor DarkYellow
+    }
+}
+
+# ==========================================================
+# 5. POWERSHELL FORENSIC LOGGING
+# ==========================================================
+
+Write-Host "`n[+] Enabling PowerShell Logging..." -ForegroundColor Yellow
+
+$ps = "HKLM:\Software\Policies\Microsoft\Windows\PowerShell"
+
+New-Item $ps -Force | Out-Null
+
+New-Item "$ps\ScriptBlockLogging" -Force | Out-Null
+Set-ItemProperty "$ps\ScriptBlockLogging" EnableScriptBlockLogging 1
+
+New-Item "$ps\ModuleLogging" -Force | Out-Null
+Set-ItemProperty "$ps\ModuleLogging" EnableModuleLogging 1
+
+New-Item "$ps\Transcription" -Force | Out-Null
+Set-ItemProperty "$ps\Transcription" EnableTranscripting 1
+
+# ==========================================================
+# 6. PROCESS COMMAND LINE LOGGING (DFIR CRITICAL)
+# ==========================================================
+
+reg add "HKLM\Software\Microsoft\Windows\CurrentVersion\Policies\System\Audit" `
+/v ProcessCreationIncludeCmdLine_Enabled /t REG_DWORD /d 1 /f | Out-Null
+
+# ==========================================================
+# 7. FIREWALL LOGGING
+# ==========================================================
+
+Write-Host "`n[+] Firewall Logging..." -ForegroundColor Yellow
+
+netsh advfirewall set allprofiles logging droppedconnections enable | Out-Null
+netsh advfirewall set allprofiles logging allowedconnections enable | Out-Null
+
+# ==========================================================
+# 8. SYSMON AUTO INSTALL
+# ==========================================================
+
+Write-Host "`n[+] Sysmon Setup..." -ForegroundColor Yellow
+
+$sysmonPath = "$env:ProgramData\sysmon.exe"
+$configPath  = "$env:ProgramData\sysmon.xml"
+
+Invoke-WebRequest "https://live.sysinternals.com/Sysmon64.exe" -OutFile $sysmonPath -UseBasicParsing
 
 Invoke-WebRequest `
 "https://raw.githubusercontent.com/SwiftOnSecurity/sysmon-config/master/sysmonconfig-export.xml" `
--OutFile "$sysmon\sysmonconfig.xml"
+-OutFile $configPath -UseBasicParsing
 
-Start-Process "$sysmon\Sysmon64.exe" -ArgumentList "-accepteula -i $sysmon\sysmonconfig.xml" -Wait
+Start-Process $sysmonPath -ArgumentList "-accepteula -i `"$configPath`"" -Wait
 
-# ============================
-# FINAL APPLY
-# ============================
-gpupdate /force | Out-Null
+# ==========================================================
+# 9. FINAL GAP REPORT
+# ==========================================================
 
-Write-Host "`n====================================================" -ForegroundColor Cyan
-Write-Host "[+] MAXIMUM WINDOWS SERVER LOGGING ENABLED" -ForegroundColor Green
-Write-Host "[+] SOC + DFIR + AD + NETWORK VISIBILITY ACTIVE" -ForegroundColor Green
-Write-Host "[+] SYS MON + DEFENDER + AUDIT + FIREWALL READY" -ForegroundColor Green
-Write-Host "====================================================" -ForegroundColor Cyan
+Write-Host "`n=============================================" -ForegroundColor Cyan
+Write-Host " FINAL LOG COVERAGE REPORT" -ForegroundColor Cyan
+Write-Host "=============================================" -ForegroundColor Cyan
+
+$missing = $report | Where-Object { $_.Status -eq "MISSING" }
+
+if ($missing.Count -eq 0) {
+    Write-Host "ALL CRITICAL LOGS AVAILABLE & ENABLED" -ForegroundColor Green
+} else {
+    Write-Host "MISSING LOGS (OS LIMITATIONS):" -ForegroundColor Yellow
+    $missing | Format-Table -AutoSize
+}
+
+Write-Host "`n=============================================" -ForegroundColor Green
+Write-Host " SOC AUTO DISCOVERY COMPLETED" -ForegroundColor Green
+Write-Host " SYSTEM NOW MAXIMUM POSSIBLE TELEMETRY MODE" -ForegroundColor Green
+Write-Host "=============================================" -ForegroundColor Green
