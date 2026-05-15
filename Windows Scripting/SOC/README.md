@@ -37,7 +37,7 @@ This project transforms default Windows systems into high-visibility enterprise 
 
 ---
 
-# ⚡ Why This Project Matters
+# ⚡ Why This Project Matters?
 
 Most Windows systems are deployed with weak default logging.
 
