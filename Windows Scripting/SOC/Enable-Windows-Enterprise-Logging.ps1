@@ -1,7 +1,8 @@
+```powershell
 # =================================================================================================
-# ULTIMATE ENTERPRISE DFIR / SOC / MALWARE TELEMETRY ENGINE
-# FULL WINDOWS SERVER A-Z LOGGING + THREAT HUNTING ENABLEMENT
-# Author: Enterprise SOC/DFIR Style Script
+# ULTIMATE ENTERPRISE WINDOWS TELEMETRY ENGINE
+# FULL DFIR | SOC | THREAT HUNTING | MALWARE | RANSOMWARE LOGGING
+# FINAL STABLE VERSION
 # RUN AS ADMINISTRATOR
 # =================================================================================================
 
@@ -9,19 +10,25 @@ Clear-Host
 
 Write-Host "=================================================================================================" -ForegroundColor Cyan
 Write-Host " ULTIMATE ENTERPRISE WINDOWS TELEMETRY ENGINE" -ForegroundColor Cyan
-Write-Host " DFIR | SOC | THREAT HUNTING | RANSOMWARE | MALWARE | IR" -ForegroundColor Cyan
+Write-Host " DFIR | SOC | THREAT HUNTING | MALWARE | RANSOMWARE" -ForegroundColor Cyan
 Write-Host "=================================================================================================" -ForegroundColor Cyan
 
 # =================================================================================================
 # ADMIN CHECK
 # =================================================================================================
 
-if (-not ([Security.Principal.WindowsPrincipal]
-    [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
-    [Security.Principal.WindowsBuiltInRole] "Administrator"))
-{
-    Write-Host "`n[!] RUN POWERSHELL AS ADMINISTRATOR" -ForegroundColor Red
-    exit
+$CurrentUser = New-Object Security.Principal.WindowsPrincipal(
+    [Security.Principal.WindowsIdentity]::GetCurrent()
+)
+
+if (-not $CurrentUser.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+
+    Write-Host ""
+    Write-Host "[!] PLEASE RUN POWERSHELL AS ADMINISTRATOR" -ForegroundColor Red
+    Write-Host ""
+
+    Pause
+    Exit
 }
 
 # =================================================================================================
@@ -30,14 +37,22 @@ if (-not ([Security.Principal.WindowsPrincipal]
 
 $ErrorActionPreference = "SilentlyContinue"
 
-$MaxSizeCritical = 1073741824      # 1 GB
-$MaxSizeMedium   = 536870912       # 512 MB
-$MaxSizeSmall    = 268435456       # 256 MB
+$CriticalLogSize = 1073741824
+$MediumLogSize   = 536870912
+$SmallLogSize    = 268435456
+
+# =================================================================================================
+# GET ALL AVAILABLE WINDOWS EVENT CHANNELS
+# =================================================================================================
+
+Write-Host ""
+Write-Host "[+] ENUMERATING WINDOWS EVENT CHANNELS..." -ForegroundColor Yellow
+Write-Host ""
 
 $AllLogs = wevtutil el
 
 # =================================================================================================
-# SAFE ENABLE FUNCTION
+# SAFE LOG ENABLE FUNCTION
 # =================================================================================================
 
 function Enable-LogSafe {
@@ -73,422 +88,486 @@ function Enable-LogSafe {
 
 $CriticalLogs = @(
 
-# -------------------------------------------------------------------------------------------------
 # CORE WINDOWS
-# -------------------------------------------------------------------------------------------------
-
 "Security",
 "System",
 "Application",
 "Setup",
 
-# -------------------------------------------------------------------------------------------------
 # POWERSHELL
-# -------------------------------------------------------------------------------------------------
-
 "Windows PowerShell",
 "Microsoft-Windows-PowerShell/Admin",
 "Microsoft-Windows-PowerShell/Operational",
 
-# -------------------------------------------------------------------------------------------------
 # SYSMON
-# -------------------------------------------------------------------------------------------------
-
 "Microsoft-Windows-Sysmon/Operational",
 
-# -------------------------------------------------------------------------------------------------
 # WMI
-# -------------------------------------------------------------------------------------------------
-
 "Microsoft-Windows-WMI-Activity/Operational",
 
-# -------------------------------------------------------------------------------------------------
 # TASK SCHEDULER
-# -------------------------------------------------------------------------------------------------
-
 "Microsoft-Windows-TaskScheduler/Operational",
 
-# -------------------------------------------------------------------------------------------------
-# DEFENDER
-# -------------------------------------------------------------------------------------------------
-
+# WINDOWS DEFENDER
 "Microsoft-Windows-Windows Defender/Operational",
-"Microsoft-Windows-Windows Defender/WHC",
 
-# -------------------------------------------------------------------------------------------------
 # FIREWALL
-# -------------------------------------------------------------------------------------------------
-
 "Microsoft-Windows-Windows Firewall With Advanced Security/Firewall",
 
-# -------------------------------------------------------------------------------------------------
-# KERNEL / PROCESS / FILE
-# -------------------------------------------------------------------------------------------------
-
-"Microsoft-Windows-Kernel-General",
-"Microsoft-Windows-Kernel-Process",
-"Microsoft-Windows-Kernel-File",
-"Microsoft-Windows-Kernel-Network",
-
-# -------------------------------------------------------------------------------------------------
 # SMB
-# -------------------------------------------------------------------------------------------------
-
 "Microsoft-Windows-SMBServer/Operational",
 "Microsoft-Windows-SMBClient/Operational",
 
-# -------------------------------------------------------------------------------------------------
-# RDP / TERMINAL SERVICES
-# -------------------------------------------------------------------------------------------------
-
+# RDP
 "Microsoft-Windows-TerminalServices-LocalSessionManager/Operational",
 "Microsoft-Windows-TerminalServices-RemoteConnectionManager/Operational",
 "Microsoft-Windows-RemoteDesktopServices-RdpCoreTS/Operational",
 
-# -------------------------------------------------------------------------------------------------
 # DNS
-# -------------------------------------------------------------------------------------------------
-
 "Microsoft-Windows-DNS-Client/Operational",
 "Microsoft-Windows-DNSServer/Audit",
 "Microsoft-Windows-DNSServer/Operational",
 
-# -------------------------------------------------------------------------------------------------
 # APPLOCKER
-# -------------------------------------------------------------------------------------------------
-
 "Microsoft-Windows-AppLocker/EXE and DLL",
 "Microsoft-Windows-AppLocker/MSI and Script",
 "Microsoft-Windows-AppLocker/Packaged app-Deployment",
 "Microsoft-Windows-AppLocker/Packaged app-Execution",
 
-# -------------------------------------------------------------------------------------------------
-# CODE INTEGRITY
-# -------------------------------------------------------------------------------------------------
+# AMSI
+"Microsoft-Antimalware-Scan-Interface/Operational",
 
+# CODE INTEGRITY
 "Microsoft-Windows-CodeIntegrity/Operational",
 
-# -------------------------------------------------------------------------------------------------
-# DEVICE / USB
-# -------------------------------------------------------------------------------------------------
+# BITS
+"Microsoft-Windows-Bits-Client/Operational",
 
+# KERNEL
+"Microsoft-Windows-Kernel-General",
+"Microsoft-Windows-Kernel-Process",
+"Microsoft-Windows-Kernel-File",
+"Microsoft-Windows-Kernel-Network",
+"Microsoft-Windows-Kernel-Boot",
+
+# NETWORK
+"Microsoft-Windows-TCPIP/Operational",
+
+# DEVICE / USB
 "Microsoft-Windows-DriverFrameworks-UserMode/Operational",
 "Microsoft-Windows-Partition/Diagnostic",
 "Microsoft-Windows-Storage-ClassPnP/Operational",
 
-# -------------------------------------------------------------------------------------------------
-# NETWORK
-# -------------------------------------------------------------------------------------------------
-
-"Microsoft-Windows-TCPIP/Operational",
-"Microsoft-Windows-NDIS/Diagnostic",
-
-# -------------------------------------------------------------------------------------------------
-# CRASH / EXPLOIT / DFIR
-# -------------------------------------------------------------------------------------------------
-
-"Microsoft-Windows-WER-SystemErrorReporting/Operational",
-"Microsoft-Windows-Kernel-Boot",
-
-# -------------------------------------------------------------------------------------------------
-# BITS / DOWNLOADS
-# -------------------------------------------------------------------------------------------------
-
-"Microsoft-Windows-Bits-Client/Operational",
-
-# -------------------------------------------------------------------------------------------------
-# AMSI
-# -------------------------------------------------------------------------------------------------
-
-"Microsoft-Antimalware-Scan-Interface/Operational"
+# CRASH REPORTING
+"Microsoft-Windows-WER-SystemErrorReporting/Operational"
 
 )
 
 # =================================================================================================
-# ENABLE CRITICAL CHANNELS
+# ENABLE CRITICAL LOGS
 # =================================================================================================
 
-Write-Host "`n=================================================================================================" -ForegroundColor Cyan
+Write-Host ""
+Write-Host "=================================================================================================" -ForegroundColor Cyan
 Write-Host " ENABLING ENTERPRISE DFIR LOG CHANNELS" -ForegroundColor Cyan
 Write-Host "=================================================================================================" -ForegroundColor Cyan
+Write-Host ""
 
-foreach ($log in $CriticalLogs) {
+foreach ($Log in $CriticalLogs) {
 
-    if ($log -match "Security|Sysmon") {
+    if ($Log -match "Security|Sysmon") {
 
-        Enable-LogSafe -LogName $log -Size $MaxSizeCritical
+        Enable-LogSafe -LogName $Log -Size $CriticalLogSize
     }
-    elseif ($log -match "PowerShell|SMB|RDP|DNS|Defender") {
+    elseif ($Log -match "PowerShell|SMB|DNS|RDP|Defender") {
 
-        Enable-LogSafe -LogName $log -Size $MaxSizeMedium
+        Enable-LogSafe -LogName $Log -Size $MediumLogSize
     }
     else {
 
-        Enable-LogSafe -LogName $log -Size $MaxSizeSmall
+        Enable-LogSafe -LogName $Log -Size $SmallLogSize
     }
 }
 
 # =================================================================================================
-# AUTO ENABLE ALL SAFE OPERATIONAL / ADMIN CHANNELS
+# AUTO ENABLE SAFE OPERATIONAL / ADMIN CHANNELS
 # =================================================================================================
 
-Write-Host "`n=================================================================================================" -ForegroundColor Cyan
-Write-Host " AUTO DISCOVERING ALL SAFE OPERATIONAL CHANNELS" -ForegroundColor Cyan
+Write-Host ""
 Write-Host "=================================================================================================" -ForegroundColor Cyan
+Write-Host " AUTO ENABLING SAFE OPERATIONAL CHANNELS" -ForegroundColor Cyan
+Write-Host "=================================================================================================" -ForegroundColor Cyan
+Write-Host ""
 
-foreach ($channel in $AllLogs) {
+foreach ($Channel in $AllLogs) {
 
     try {
 
         if (
-            $channel -match "Operational|Admin|Analytic" -and
-            $channel -notmatch "Debug|Trace"
+            $Channel -match "Operational|Admin" -and
+            $Channel -notmatch "Debug|Trace"
         ) {
 
-            wevtutil sl "$channel" /e:true | Out-Null
+            wevtutil sl "$Channel" /e:true | Out-Null
 
-            Write-Host "[AUTO-ENABLED] $channel" -ForegroundColor DarkCyan
+            Write-Host "[AUTO ENABLED] $Channel" -ForegroundColor DarkCyan
         }
     }
     catch {}
 }
 
 # =================================================================================================
-# ADVANCED AUDIT POLICY
+# ADVANCED AUDIT POLICIES
 # =================================================================================================
 
-Write-Host "`n=================================================================================================" -ForegroundColor Cyan
-Write-Host " APPLYING ENTERPRISE AUDIT POLICY" -ForegroundColor Cyan
+Write-Host ""
 Write-Host "=================================================================================================" -ForegroundColor Cyan
+Write-Host " APPLYING ADVANCED AUDIT POLICIES" -ForegroundColor Cyan
+Write-Host "=================================================================================================" -ForegroundColor Cyan
+Write-Host ""
 
 $AuditPolicies = @(
 
+"Logon",
+"Logoff",
+"Special Logon",
+"Other Logon/Logoff Events",
 "Account Lockout",
-"Application Group Management",
-"Computer Account Management",
 "Credential Validation",
-"Detailed File Share",
-"Directory Service Access",
-"Directory Service Changes",
-"Directory Service Replication",
-"File Share",
-"File System",
-"Filtering Platform Connection",
-"Filtering Platform Packet Drop",
-"Handle Manipulation",
-"Kernel Object",
 "Kerberos Authentication Service",
 "Kerberos Service Ticket Operations",
-"Logoff",
-"Logon",
-"Network Policy Server",
-"Other Account Management Events",
-"Other Logon/Logoff Events",
-"Plug and Play Events",
-"Policy Change",
-"Privilege Use",
 "Process Creation",
 "Process Termination",
+"File Share",
+"Detailed File Share",
+"File System",
 "Registry",
 "Removable Storage",
 "SAM",
-"Security Group Management",
+"Policy Change",
+"Privilege Use",
 "Sensitive Privilege Use",
-"Special Logon",
-"User Account Management"
+"Security Group Management",
+"User Account Management",
+"Computer Account Management",
+"Directory Service Access",
+"Directory Service Changes",
+"Directory Service Replication",
+"Plug and Play Events",
+"Handle Manipulation"
+
 )
 
-foreach ($policy in $AuditPolicies) {
+foreach ($Policy in $AuditPolicies) {
 
-    auditpol /set /subcategory:"$policy" /success:enable /failure:enable | Out-Null
+    try {
 
-    Write-Host "[AUDIT ENABLED] $policy" -ForegroundColor Green
+        auditpol /set /subcategory:"$Policy" /success:enable /failure:enable | Out-Null
+
+        Write-Host "[AUDIT ENABLED] $Policy" -ForegroundColor Green
+    }
+    catch {
+
+        Write-Host "[AUDIT FAILED ] $Policy" -ForegroundColor DarkYellow
+    }
 }
 
 # =================================================================================================
-# PROCESS COMMAND LINE LOGGING
+# PROCESS COMMAND-LINE LOGGING
 # =================================================================================================
 
-Write-Host "`n[+] PROCESS COMMAND-LINE LOGGING" -ForegroundColor Yellow
+Write-Host ""
+Write-Host "[+] ENABLING PROCESS COMMAND-LINE LOGGING..." -ForegroundColor Yellow
 
-reg add "HKLM\Software\Microsoft\Windows\CurrentVersion\Policies\System\Audit" `
-/v ProcessCreationIncludeCmdLine_Enabled /t REG_DWORD /d 1 /f | Out-Null
+try {
 
-# =================================================================================================
-# POWERSHELL DEEP LOGGING
-# =================================================================================================
+    reg add "HKLM\Software\Microsoft\Windows\CurrentVersion\Policies\System\Audit" `
+    /v ProcessCreationIncludeCmdLine_Enabled `
+    /t REG_DWORD `
+    /d 1 `
+    /f | Out-Null
 
-Write-Host "[+] POWERSHELL FORENSIC LOGGING" -ForegroundColor Yellow
+    Write-Host "[OK] PROCESS COMMAND-LINE LOGGING ENABLED" -ForegroundColor Green
+}
+catch {
 
-$PSBase = "HKLM:\Software\Policies\Microsoft\Windows\PowerShell"
-
-New-Item $PSBase -Force | Out-Null
-
-# Script Block Logging
-New-Item "$PSBase\ScriptBlockLogging" -Force | Out-Null
-Set-ItemProperty "$PSBase\ScriptBlockLogging" EnableScriptBlockLogging 1
-
-# Module Logging
-New-Item "$PSBase\ModuleLogging" -Force | Out-Null
-Set-ItemProperty "$PSBase\ModuleLogging" EnableModuleLogging 1
-
-# Transcription
-New-Item "$PSBase\Transcription" -Force | Out-Null
-Set-ItemProperty "$PSBase\Transcription" EnableTranscripting 1
-Set-ItemProperty "$PSBase\Transcription" OutputDirectory "C:\PS_Transcripts"
+    Write-Host "[FAILED] PROCESS COMMAND-LINE LOGGING" -ForegroundColor Red
+}
 
 # =================================================================================================
-# DEFENDER HARDENING
+# POWERSHELL FORENSIC LOGGING
 # =================================================================================================
 
-Write-Host "`n[+] DEFENDER ADVANCED TELEMETRY" -ForegroundColor Yellow
+Write-Host ""
+Write-Host "[+] ENABLING POWERSHELL FORENSIC LOGGING..." -ForegroundColor Yellow
 
-Set-MpPreference -DisableRealtimeMonitoring $false
-Set-MpPreference -MAPSReporting Advanced
-Set-MpPreference -SubmitSamplesConsent 1
-Set-MpPreference -EnableNetworkProtection Enabled
-Set-MpPreference -PUAProtection Enabled
-Set-MpPreference -DisableIOAVProtection $false
+try {
+
+    $PSBase = "HKLM:\Software\Policies\Microsoft\Windows\PowerShell"
+
+    New-Item $PSBase -Force | Out-Null
+
+    # Script Block Logging
+    New-Item "$PSBase\ScriptBlockLogging" -Force | Out-Null
+    Set-ItemProperty "$PSBase\ScriptBlockLogging" EnableScriptBlockLogging 1
+
+    # Module Logging
+    New-Item "$PSBase\ModuleLogging" -Force | Out-Null
+    Set-ItemProperty "$PSBase\ModuleLogging" EnableModuleLogging 1
+
+    # Transcription
+    New-Item "$PSBase\Transcription" -Force | Out-Null
+    Set-ItemProperty "$PSBase\Transcription" EnableTranscripting 1
+    Set-ItemProperty "$PSBase\Transcription" OutputDirectory "C:\PS_Transcripts"
+
+    if (!(Test-Path "C:\PS_Transcripts")) {
+
+        New-Item "C:\PS_Transcripts" -ItemType Directory | Out-Null
+    }
+
+    Write-Host "[OK] POWERSHELL FORENSICS ENABLED" -ForegroundColor Green
+}
+catch {
+
+    Write-Host "[FAILED] POWERSHELL FORENSICS" -ForegroundColor Red
+}
+
+# =================================================================================================
+# WINDOWS DEFENDER HARDENING
+# =================================================================================================
+
+Write-Host ""
+Write-Host "[+] ENABLING MICROSOFT DEFENDER TELEMETRY..." -ForegroundColor Yellow
+
+try {
+
+    Set-MpPreference -DisableRealtimeMonitoring $false
+    Set-MpPreference -MAPSReporting Advanced
+    Set-MpPreference -SubmitSamplesConsent 1
+    Set-MpPreference -EnableNetworkProtection Enabled
+    Set-MpPreference -PUAProtection Enabled
+
+    Write-Host "[OK] MICROSOFT DEFENDER HARDENING ENABLED" -ForegroundColor Green
+}
+catch {
+
+    Write-Host "[SKIPPED] DEFENDER SETTINGS NOT AVAILABLE" -ForegroundColor DarkYellow
+}
 
 # =================================================================================================
 # ASR RULES
 # =================================================================================================
 
-Write-Host "`n[+] ENABLING MICROSOFT ASR RULES" -ForegroundColor Yellow
+Write-Host ""
+Write-Host "[+] ENABLING ATTACK SURFACE REDUCTION RULES..." -ForegroundColor Yellow
 
 $ASRRules = @(
+
 "56a863a9-875e-4185-98a7-b882c64b5ce5",
 "d4f940ab-401b-4efc-aadc-ad5f3c50688a",
 "3b576869-a4ec-4529-8536-b80a7769e899",
-"be9ba2d9-53ea-4cdc-84e5-9b1eeee46550",
-"26190899-1602-49e8-8b27-eb1d0a1ce869",
-"9e6c4e1f-7d60-472f-ba1a-a39ef669e4b2"
+"be9ba2d9-53ea-4cdc-84e5-9b1eeee46550"
+
 )
 
-foreach ($rule in $ASRRules) {
+foreach ($Rule in $ASRRules) {
 
-    Add-MpPreference -AttackSurfaceReductionRules_Ids $rule `
-                     -AttackSurfaceReductionRules_Actions Enabled
+    try {
+
+        Add-MpPreference `
+        -AttackSurfaceReductionRules_Ids $Rule `
+        -AttackSurfaceReductionRules_Actions Enabled
+
+        Write-Host "[ASR ENABLED] $Rule" -ForegroundColor Green
+    }
+    catch {
+
+        Write-Host "[ASR SKIPPED] $Rule" -ForegroundColor DarkYellow
+    }
 }
 
 # =================================================================================================
 # FIREWALL LOGGING
 # =================================================================================================
 
-Write-Host "`n[+] FIREWALL LOGGING" -ForegroundColor Yellow
+Write-Host ""
+Write-Host "[+] ENABLING FIREWALL LOGGING..." -ForegroundColor Yellow
 
-netsh advfirewall set allprofiles logging droppedconnections enable | Out-Null
-netsh advfirewall set allprofiles logging allowedconnections enable | Out-Null
+try {
+
+    netsh advfirewall set allprofiles logging droppedconnections enable | Out-Null
+    netsh advfirewall set allprofiles logging allowedconnections enable | Out-Null
+
+    Write-Host "[OK] FIREWALL LOGGING ENABLED" -ForegroundColor Green
+}
+catch {
+
+    Write-Host "[FAILED] FIREWALL LOGGING" -ForegroundColor Red
+}
 
 # =================================================================================================
 # APPLOCKER AUDIT MODE
 # =================================================================================================
 
-Write-Host "`n[+] APPLOCKER AUDIT MODE" -ForegroundColor Yellow
+Write-Host ""
+Write-Host "[+] ENABLING APPLOCKER AUDIT MODE..." -ForegroundColor Yellow
 
-Set-Service AppIDSvc -StartupType Automatic
-Start-Service AppIDSvc
+try {
 
-# =================================================================================================
-# SACL FILE AUDITING
-# =================================================================================================
+    Set-Service AppIDSvc -StartupType Automatic
+    Start-Service AppIDSvc
 
-Write-Host "`n[+] ENABLING FILE SYSTEM SACL AUDITING" -ForegroundColor Yellow
+    Write-Host "[OK] APPLOCKER AUDIT MODE ENABLED" -ForegroundColor Green
+}
+catch {
 
-auditpol /set /subcategory:"File System" /success:enable /failure:enable | Out-Null
+    Write-Host "[SKIPPED] APPLOCKER NOT AVAILABLE" -ForegroundColor DarkYellow
+}
 
 # =================================================================================================
 # SMB AUDITING
 # =================================================================================================
 
-Write-Host "`n[+] SMB FORENSIC LOGGING" -ForegroundColor Yellow
+Write-Host ""
+Write-Host "[+] ENABLING SMB FORENSIC LOGGING..." -ForegroundColor Yellow
 
-Set-SmbServerConfiguration -AuditSmb1Access $true -Force | Out-Null
+try {
 
-# =================================================================================================
-# RDP FORENSICS
-# =================================================================================================
+    Set-SmbServerConfiguration -AuditSmb1Access $true -Force | Out-Null
 
-Write-Host "`n[+] RDP FORENSIC LOGGING" -ForegroundColor Yellow
+    Write-Host "[OK] SMB FORENSIC LOGGING ENABLED" -ForegroundColor Green
+}
+catch {
 
-reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services" `
-/v fEnableLogging /t REG_DWORD /d 1 /f | Out-Null
-
-# =================================================================================================
-# DNS CLIENT LOGGING
-# =================================================================================================
-
-Write-Host "`n[+] DNS CLIENT LOGGING" -ForegroundColor Yellow
-
-wevtutil sl "Microsoft-Windows-DNS-Client/Operational" /e:true
+    Write-Host "[SKIPPED] SMB AUDITING NOT AVAILABLE" -ForegroundColor DarkYellow
+}
 
 # =================================================================================================
-# SYSMON INSTALL
+# RDP LOGGING
 # =================================================================================================
 
-Write-Host "`n=================================================================================================" -ForegroundColor Cyan
-Write-Host " INSTALLING SYSMON" -ForegroundColor Cyan
-Write-Host "=================================================================================================" -ForegroundColor Cyan
+Write-Host ""
+Write-Host "[+] ENABLING RDP FORENSIC LOGGING..." -ForegroundColor Yellow
 
-$SysmonEXE = "$env:TEMP\Sysmon64.exe"
-$SysmonCFG = "$env:TEMP\sysmonconfig.xml"
+try {
 
-Invoke-WebRequest `
-"https://live.sysinternals.com/Sysmon64.exe" `
--OutFile $SysmonEXE `
--UseBasicParsing
+    reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services" `
+    /v fEnableLogging `
+    /t REG_DWORD `
+    /d 1 `
+    /f | Out-Null
 
-Invoke-WebRequest `
-"https://raw.githubusercontent.com/olafhartong/sysmon-modular/master/sysmonconfig.xml" `
--OutFile $SysmonCFG `
--UseBasicParsing
+    Write-Host "[OK] RDP FORENSIC LOGGING ENABLED" -ForegroundColor Green
+}
+catch {
 
-Start-Process $SysmonEXE `
--ArgumentList "-accepteula -i `"$SysmonCFG`"" `
--Wait
+    Write-Host "[FAILED] RDP FORENSIC LOGGING" -ForegroundColor Red
+}
 
 # =================================================================================================
 # WINDOWS EVENT FORWARDING
 # =================================================================================================
 
-Write-Host "`n[+] WINDOWS EVENT FORWARDING SERVICE" -ForegroundColor Yellow
+Write-Host ""
+Write-Host "[+] ENABLING WINDOWS EVENT FORWARDING..." -ForegroundColor Yellow
 
-Set-Service Wecsvc -StartupType Automatic
-Start-Service Wecsvc
+try {
+
+    Set-Service Wecsvc -StartupType Automatic
+    Start-Service Wecsvc
+
+    Write-Host "[OK] WINDOWS EVENT FORWARDING ENABLED" -ForegroundColor Green
+}
+catch {
+
+    Write-Host "[FAILED] WINDOWS EVENT FORWARDING" -ForegroundColor Red
+}
 
 # =================================================================================================
-# RETENTION SETTINGS
+# SYSMON INSTALLATION
 # =================================================================================================
 
-Write-Host "`n[+] LOG RETENTION SETTINGS" -ForegroundColor Yellow
+Write-Host ""
+Write-Host "=================================================================================================" -ForegroundColor Cyan
+Write-Host " INSTALLING SYSMON" -ForegroundColor Cyan
+Write-Host "=================================================================================================" -ForegroundColor Cyan
+Write-Host ""
 
-wevtutil sl Security /rt:true
-wevtutil sl System /rt:true
-wevtutil sl Application /rt:true
+try {
+
+    $SysmonEXE = "$env:TEMP\Sysmon64.exe"
+    $SysmonCFG = "$env:TEMP\sysmonconfig.xml"
+
+    Invoke-WebRequest `
+    "https://live.sysinternals.com/Sysmon64.exe" `
+    -OutFile $SysmonEXE `
+    -UseBasicParsing
+
+    Invoke-WebRequest `
+    "https://raw.githubusercontent.com/olafhartong/sysmon-modular/master/sysmonconfig.xml" `
+    -OutFile $SysmonCFG `
+    -UseBasicParsing
+
+    Start-Process `
+    $SysmonEXE `
+    -ArgumentList "-accepteula -i `"$SysmonCFG`"" `
+    -Wait
+
+    Write-Host "[OK] SYSMON INSTALLED SUCCESSFULLY" -ForegroundColor Green
+}
+catch {
+
+    Write-Host "[FAILED] SYSMON INSTALLATION FAILED" -ForegroundColor Red
+}
 
 # =================================================================================================
-# FINAL STATUS REPORT
+# LOG RETENTION
 # =================================================================================================
 
-Write-Host "`n=================================================================================================" -ForegroundColor Green
+Write-Host ""
+Write-Host "[+] CONFIGURING LOG RETENTION..." -ForegroundColor Yellow
+
+try {
+
+    wevtutil sl Security /rt:true
+    wevtutil sl System /rt:true
+    wevtutil sl Application /rt:true
+
+    Write-Host "[OK] LOG RETENTION CONFIGURED" -ForegroundColor Green
+}
+catch {
+
+    Write-Host "[FAILED] LOG RETENTION" -ForegroundColor Red
+}
+
+# =================================================================================================
+# FINAL STATUS
+# =================================================================================================
+
+Write-Host ""
+Write-Host "=================================================================================================" -ForegroundColor Green
 Write-Host " FINAL ENTERPRISE TELEMETRY STATUS" -ForegroundColor Green
 Write-Host "=================================================================================================" -ForegroundColor Green
+Write-Host ""
 
 Write-Host "[OK] ADVANCED AUDITING ENABLED" -ForegroundColor Green
 Write-Host "[OK] POWERSHELL FORENSICS ENABLED" -ForegroundColor Green
-Write-Host "[OK] DEFENDER HARDENING ENABLED" -ForegroundColor Green
-Write-Host "[OK] ASR RULES ENABLED" -ForegroundColor Green
+Write-Host "[OK] PROCESS COMMAND-LINE LOGGING ENABLED" -ForegroundColor Green
 Write-Host "[OK] FIREWALL LOGGING ENABLED" -ForegroundColor Green
-Write-Host "[OK] SMB FORENSICS ENABLED" -ForegroundColor Green
-Write-Host "[OK] RDP FORENSICS ENABLED" -ForegroundColor Green
-Write-Host "[OK] AMSI LOGGING ENABLED" -ForegroundColor Green
-Write-Host "[OK] APPLOCKER AUDIT ENABLED" -ForegroundColor Green
-Write-Host "[OK] SACL AUDITING ENABLED" -ForegroundColor Green
-Write-Host "[OK] WINDOWS EVENT FORWARDING READY" -ForegroundColor Green
+Write-Host "[OK] AMSI TELEMETRY ENABLED" -ForegroundColor Green
+Write-Host "[OK] SMB FORENSIC LOGGING ENABLED" -ForegroundColor Green
+Write-Host "[OK] RDP FORENSIC LOGGING ENABLED" -ForegroundColor Green
+Write-Host "[OK] WINDOWS EVENT FORWARDING ENABLED" -ForegroundColor Green
+Write-Host "[OK] MICROSOFT DEFENDER HARDENING ENABLED" -ForegroundColor Green
+Write-Host "[OK] APPLOCKER AUDIT MODE ENABLED" -ForegroundColor Green
+Write-Host "[OK] THREAT HUNTING TELEMETRY ENABLED" -ForegroundColor Green
+Write-Host "[OK] ENTERPRISE DFIR TELEMETRY ENABLED" -ForegroundColor Green
 Write-Host "[OK] SYSMON INSTALLED" -ForegroundColor Green
-Write-Host "[OK] ENTERPRISE THREAT HUNTING MODE ACTIVE" -ForegroundColor Green
 
-Write-Host "`n=================================================================================================" -ForegroundColor Green
-Write-Host " MAXIMUM POSSIBLE WINDOWS SERVER TELEMETRY ENABLED" -ForegroundColor Green
-Write-Host " DFIR / SOC / MALWARE / RANSOMWARE READY" -ForegroundColor Green
+Write-Host ""
 Write-Host "=================================================================================================" -ForegroundColor Green
+Write-Host " MAXIMUM POSSIBLE WINDOWS TELEMETRY ENABLED" -ForegroundColor Green
+Write-Host " DFIR | SOC | MALWARE | RANSOMWARE READY" -ForegroundColor Green
+Write-Host "=================================================================================================" -ForegroundColor Green
+Write-Host ""
+```
