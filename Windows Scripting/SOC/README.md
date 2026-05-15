@@ -234,7 +234,7 @@ Improves telemetry for:
 
 ```powershell
 Set-ExecutionPolicy Bypass -Scope Process -Force
-.\UltimateTelemetry.ps1
+.\Enable-Windows-Enterprise-Logging.ps1
 ```
 
 ---
